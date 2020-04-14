@@ -1,0 +1,186 @@
+\documentclass[11pt]{report}
+\usepackage{./assignment_written}
+\usepackage{slashbox}
+\usepackage{enumerate}
+\usepackage[shortlabels]{enumitem}
+\usepackage{graphicx}
+\usepackage[final]{pdfpages}
+\usepackage{array}
+\usepackage{multirow}
+%\PassOptionsToPackage{normalem}{ulem}
+%\usepackage{ulem}
+
+\input{./Definitions}
+
+%\providecommand{\tabularnewline}{\\}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% User specified LaTeX commands.
+%\usepackage{tikz}
+%\usepackage{tkz-graph}
+%\usetikzlibrary{shapes.arrows,chains}
+%\usetikzlibrary{calc}
+%\usetikzlibrary{arrows}
+
+
+%\graphicspath{{./figures/}}
+
+\lecturenumber{1}       % assignment number
+\duedate{12 noon, Feb 27, 2020}
+
+% Fill in your name and email address
+\stuinfo{Your Name}{netid@uic.edu}
+\graphicspath{{./}{./Figures/}}
+
+\begin{document}
+
+\maketitle
+
+{\bf Deadline: 12 noon, Feb 27, 2020}
+
+This is the written part of Assignment 1, consisting of five questions.
+{\bf They are for individual work; you must work on them by yourself.}
+You should write up your solution to the five questions in a single Portable Document Format (PDF) file,
+which can be either typed using WORD or latex, 
+or be scanned copies of handwritten manuscripts provided that the handwriting is neat and legible.  
+The \LaTeX\ source code of this document is provided with the package, and you may write up your report based on it.
+
+\paragraph{How to submit the written part solution.}
+Name the PDF as \verb#Surname_UIN.pdf#, 
+where \verb#Surname# is your last name and \verb#UIN# is your UIC UIN.  
+Upload the PDF to Blackboard, under \verb#Assessment\Assignment_1_Written#.
+
+{\bf Note there are two different links on Blackboard corresponding to the written and programming parts of Assignment 1.}
+
+You are allowed to resubmit as often as you like and your grade will be based on the last version submitted.
+Late submissions will not be accepted in any case, 
+unless there is a documented personal emergency.  
+Arrangements must be made with the instructor as soon as possible after the emergency arises,
+preferably well before the deadline.
+Assignment 1 contributes {\bf 13\%} to your final grade,
+and the written part carries 45 points (out of 100) for Assignment 1.
+
+
+Start working on the assignment early.
+
+Latex primer: http://ctan.mackichan.com/info/lshort/english/lshort.pdf (Chapter 3)
+
+\vspace{3em}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section*{Written Questions (45 pt, Work on Yourself Only)}
+
+\fbox{%
+\begin{minipage}{0.98\textwidth}
+1. (10 pt, Ex 2.1 of Murphy's book)
+My neighbor has two children. Assuming that the gender of a child is like a coin flip,
+it is most likely, a priori, that my neighbor has one boy and one girl, with probability 1/2.
+The other possibilities---two boys or two girls---have probabilities 1/4 and 1/4.
+\begin{enumerate}[(a)]
+  \item (2 pt) What is the a priori probability that exactly one child is a girl?
+  \item (2 pt) What is the a priori probability that at least one child is a girl?
+  \item (3 pt) Suppose I ask him whether he has any boys, and he says yes. What is the probability that (exactly) one child is a girl?  How does it compare with the result of (a) and (b)?
+  \item (3 pt) Suppose instead that I happen to see one of his children run by, and it is a boy. What is the probability that the other child is a girl?
+\end{enumerate}
+\end{minipage}
+}
+
+\textit{Solution:}
+
+Your answer here.
+
+\vspace{2em}
+
+
+
+\fbox{%
+	\begin{minipage}{0.98\textwidth}
+		2. (8 pt, Ex 2.2 of Murphy's book)
+		Suppose a crime has been committed. Blood is found at the scene for which there is
+		no innocent explanation. It is of a type which is present in 1\% of the population.
+		\begin{enumerate}[(a)]
+			\item (3 pt) The prosecutor claims: There is a 1\% chance that the defendant would have the crime blood type if he were innocent. Thus there is a 99\% chance that he guilty. This is known as the prosecutor's fallacy.  What is wrong with this argument?
+			\item (5 pt) The defender claims: The crime occurred in a city of 800,000 people. The blood type would be found in approximately 8000 people. The evidence has provided a probability of just 1 in 8000 that the defendant is guilty, and thus has no relevance. This is known as the defender's fallacy. What is wrong with this argument?
+		\end{enumerate}
+		Hint: write out the definition of events and formalize the probability in question.
+	\end{minipage}
+}
+
+\textit{Solution:}
+
+Your answer here.
+
+\vspace{2em}
+
+
+
+
+\fbox{%
+	\begin{minipage}{0.98\textwidth}
+		3. (10 pt, Ex 2.9 of Murphy's book) \\
+		Are the following properties true? Prove or disprove. Note that we are not restricting
+		attention to distributions that can be represented by a graphical model.
+		\begin{enumerate}[(a)]
+			\item (5 pt) True or false? $(X \perp W | Z, Y) \wedge (X \perp Y | Z) \Rightarrow (X \perp Y, W | Z)$.
+			\item (5 pt) True or false? $(X \perp Y | Z) \wedge (X \perp Y | W) \Rightarrow (X \perp Y| Z, W)$.
+		\end{enumerate}
+	\end{minipage}
+}
+
+\textit{Solution:}
+
+Your answer here.
+
+\vspace{2em}
+
+
+\fbox{%
+	\begin{minipage}{0.98\textwidth}
+		4. (10 pt, Ex 2.6 of Murphy's book) \\
+		a. (5 pt) Let $H \in \{1, \ldots, K\}$ be a discrete random variable,
+		and let $e_1$ and $e_2$ be the observed values of two other random variables $E_1$ and $E_2$.
+		Suppose we wish to calculate the vector
+		\begin{align*}
+		\overrightarrow{P}(H|e_1, e_2) = (P(H=1|e_1, e_2), \ldots, P(H=K|e_1, e_2)).
+		\end{align*}
+		Which of the following sets of numbers are sufficient for the calculation?
+		\begin{enumerate}[(i)]
+			\item $P(e_1, e_2), P(H), P(e_1 | H), P(e_2 | H)$.
+			\item $P(e_1, e_2), P(H), P(e_1, e_2 | H)$.
+			\item $P(e_1|H), P(e_2 | H), P(H)$.
+		\end{enumerate}
+		b. (5 pt) Now suppose we now assume $E_1 \perp E_2 | H$ (i.e., $E_1$ and $E_2$ are conditionally independent given $H$).
+		Which of the above 3 sets are sufficient now?
+		\\
+		\\
+		Show your calculations as well as giving the final result. Hint: use Bayes rule.
+	\end{minipage}
+}
+
+\textit{Solution:}
+
+Your answer here.
+
+\vspace{2em}
+
+\fbox{%
+\begin{minipage}{0.98\textwidth}
+5. (7 pt) What is the treewidth of the following graph?
+Write out all edges you add to triangulate the graph (\eg\ (a,e)).
+%\\
+\begin{center}
+\includegraphics[width=4cm]{graph}
+\end{center}
+\end{minipage}
+}
+
+
+\textit{Solution:}
+
+Your answer here.
+
+
+
+
+
+\end{document}

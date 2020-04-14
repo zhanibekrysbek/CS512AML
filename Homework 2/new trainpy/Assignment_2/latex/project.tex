@@ -1,0 +1,484 @@
+\documentclass[11pt]{report}
+\usepackage{./assignment}
+\usepackage{slashbox}
+%\usepackage{enumitem}
+%\usepackage{stmaryrd}
+%\usepackage{cprotect}
+\usepackage{graphicx}
+\usepackage{subfigure}
+
+\input{./Definitions}
+
+\title{Assignment 2: Conditional Random Fields with Convolutions}
+
+\lecturenumber{2}       % assignment number
+\duedate{12 noon, March 12, 2020} % Change this
+
+% Fill in your name and email address
+\stuinfo{Your Name(s)}{NetID(s)@uic.edu}
+
+\graphicspath{{./}{./Figures/}}
+
+\begin{document}
+
+\maketitle
+
+{\bf Deadline: 12 noon, March 12, 2020}
+
+In this project we will continue to explore Conditional Random Fields (CRFs),
+but we will use additional image level features such as convolutions to aid the
+training. We will use PyTorch to implement our CRF model and convolutions. You
+will get a chance to implement an end-to-end machine learning solution to a
+problem in PyTorch. In the process, you will also pick up tools to do
+differentiable layer-wise programming, which is common across all the popular
+deep learning frameworks that exist today.
+
+\paragraph{Acceptable libraries.}
+The main benefits of using PyTorch (and other similar deep learning libraries) is GPU computation and features such as automatic differentiation. Although you could technically use libraries such as numpy for performing certain numerical computations inside your layer, you may lose these benefits in doing so. 
+
+\paragraph{How to submit.}
+
+Only one member of each team needs to submit a tarball or zip file on Blackboard
+under \verb#Assessment/Assignment_2#.
+The filename should be \verb#Surname_UIN.tar# or \verb#Surname_UIN.zip#,
+where \verb#Surname# and \verb#UIN# correspond to the member who submits it.
+
+Inside the zip/tar file, the following contents should be included:
+\vspace{-1em}
+\begin{enumerate}
+
+  \item  A PDF report named \verb#Report.pdf# with answers to the questions outlined below.
+    {\bf Your report should include the name and NetID of \emph{all} team members.}
+    The \LaTeX\ source code of this document is provided with the package, and
+    you may write up your report based on it.
+  \item Your source code, which should be well commented.
+    Include a short \verb#readme.txt# file that explains how to run your code.
+\end{enumerate}
+\vspace{-1em}
+
+
+You are allowed to resubmit as often as you like and your grade will be based on the last version submitted.
+Late submissions will not be accepted in any case, 
+unless there is a documented personal emergency.  
+Arrangements must be made with the instructor as soon as possible after the emergency arises,
+preferably well before the deadline.
+This assignment contributes {\bf 13\%} to your final grade.
+
+\section{Introduction}
+\label{sec:Introduction}
+
+\paragraph{Dataset.}
+
+We will use Taskar's OCR dataset for this project(the same dataset which was
+used in Assignment2). The dataset description is repeated here again for your
+convenience.
+
+
+The original dataset was maintained by \href{https://en.wikipedia.org/wiki/Ben_Taskar}{Ben Taskar}.
+It contains the image and label of 6,877 words collected from 150 human
+subjects, with 52,152 letters in total. To simplify feature engineering, each
+letter image is encoded by a 128 (=16*8) dimensional vector, whose entries are
+either 0 (black) or 1 (white).
+%
+%The meaning of the fields in each line is described in \verb#data/fields.txt# (the LIBSVM format).
+%
+Note in this dataset, only lowercase letters are involved, \ie\ 26 possible
+labels. Since the first letter of each word was capitalized and the rest were in
+lowercase, the dataset has removed all first letters.
+
+
+
+\paragraph{Minibatches.}
+\label{par:Minibatches}
+When training a model in PyTorch, it is common to send minibatches of training
+examples to the optimizer. A minibatch is a small subset of the training data
+(the size of the minibatch is usually a tunable hyperparameter).
+
+In the starter code that is provided, the \texttt{DataLoader} is already setup
+to process the input dataset as batches. The entire dataset is also divided
+evenly into training and test data.
+
+However, when implementing the CRF and Convolution layer, you will have to be
+mindful of the fact that the input to your module will be a minibatch. The
+following is the shape of the data after batching.
+%
+\begin{equation}
+  X \in \mathbb{R}^{ \text{batch\_size} \times \text{max\_word\_length} \times 128}
+\end{equation}
+%
+So every row of a batch corresponds to a word (sequence). Here
+$\text{max\_word\_length}$ is the maximum word length of all the words in the
+dataset. For words whose length is less than $\text{max\_word\_length}$, zero
+padding is added.
+
+\begin{figure}[t!]
+	\begin{minipage}[b]{0.62\textwidth}
+		\centering \vspace{-0.6em} \includegraphics[width=9cm]{brace.jpg}
+		\vspace{0.6em}
+		\caption{Example word image}\label{fig:brace}
+	\end{minipage}
+	~~~
+	\begin{minipage}[b]{0.33\textwidth}
+		\centering \includegraphics[width=5cm]{crf}
+		\caption{CRF for word-letter}\label{fig:CRF_model}
+	\end{minipage}
+\end{figure}
+
+\paragraph{Conditional Random Fields.}
+\label{sec:Condtional_Random_Fields}
+
+The CRF model is the same as what was defined in Assignment 2. However, there is
+a difference in the input that is passed to the CRF model. To recall the details
+of the OCR dataset - the training set consists of $n$ words. The image of the
+$t$-th word can be represented as $X^t = (\xvec^t_1, \ldots, \xvec^t_m)'$, where
+$'$ means transpose, $t$ is a superscript (not exponent), and each \emph{row} of
+$X^t$ (\eg\ $\xvec^t_m$) represents a letter. Here $m$ is the number of letters
+in the word, and $\xvec^t_j$ is a 128 dimensional vector that represents its
+$j$-th letter image. To ease notation, we simply assume all words have $m$
+letters. The sequence label of a word is encoded as $\yvec^t = (y^t_1, \ldots,
+y^t_m)$, where $y^t_k \in \Ycal := \{1, 2, \ldots, 26\}$ represents the label of
+the $k$-th letter. So in Figure \ref{fig:brace}, $y^t_1 = 2$, $y^t_2 = 18$,
+\ldots, $y^t_5 = 5$.
+
+In this assignment, the CRF model will instead take \emph{convolutional
+  features}, given by a function $g$, which you will implement. The details of
+the convolution operation is given in Section \ref{par:Convolution}.
+
+Using this (new) notation, the Conditional Random Field (CRF) model for this
+task is a sequence shown in Figure \ref{fig:CRF_model}, and the probabilistic
+model for a word/label pair $(X, \yvec)$ can be written as
+%
+\begin{align}
+  \label{eq:crf}
+  p(\yvec | X ) &= \frac{1}{Z_X} \exp \rbr{\sum_{s=1}^m \inner{\wvec_{y_s}}{g(\xvec_s)} + \sum_{s=1}^{m-1} T_{y_s, y_{s+1}}} \\
+  \where Z_X &= \sum_{\hat{\yvec} \in \Ycal^m} \exp \rbr{\sum_{s=1}^m \inner{\wvec_{\yhat_s}}{g(\xvec_s)} + \sum_{s=1}^{m-1} T_{\yhat_s, \yhat_{s+1}}}.
+\end{align}
+	%
+% $Z(X)$ is a normalization constant depending on $X$.
+$\inner{\cdot}{\cdot}$ denotes inner product between vectors. Two groups of
+parameters are used here:
+
+\vspace{-1em}
+\begin{itemize}
+
+\item {\bf Node weight:} Letter-wise discriminant weight vector $\wvec_k \in
+  \RR^{128}$ for each possible letter label $k \in \Ycal$;
+
+\item {\bf Edge weight:} Transition weight matrix $T$ which is sized
+  $26$-by-$26$. $T_{ij}$ is the weight associated with the letter pair of the
+  $i$-th and $j$-th letter in the alphabet. For example $T_{1,9}$ is the weight
+  for pair (`a', `i'), and $T_{24,2}$ is for the pair (`x', `b'). In general $T$
+  is not symmetric, \ie\ $T_{ij} \neq T_{ji}$, or written as $T' \neq T$ where
+  $T'$ is the transpose of $T$.
+\end{itemize}
+
+Given these parameters (\eg\ by learning from data), the model \eqref{eq:crf}
+can be used to predict the sequence label (\ie\ word) for a new word image $X^*
+:= (\xvec^*_1, \ldots, \xvec^*_m)'$ via the so-called maximum a-posteriori (MAP)
+inference:
+%
+\begin{align}
+	\label{eq:crf_decode}
+	\yvec^* = \argmax_{\yvec \in \Ycal^m} p(\yvec | X^*)
+	= \argmax_{\yvec \in \Ycal^m} \cbr{ \sum_{j=1}^m \inner{\wvec_{y_j}}{g(\xvec^*)_j} + \sum_{j=1}^{m-1} T_{y_j, y_{j+1}}}.
+\end{align}
+
+When CRF is used as a layer, we need to compute the gradient with respect to its input.
+In \eqref{eq:crf}, let us denote $z_s = g(\xvec_s)$. 
+Then
+\begin{align}
+	\nabla_{z_s} p(\mathbf{y}|X) 
+	&= \mathbf{w}_{y_s} - \sum_{\hat{\mathbf{y}} \in \mathcal{Y}^m} \frac{\exp(...)}{Z} \cdot \nabla_{z_s} \sum_{s = 1}^m \langle \mathbf{w}_{\hat{y}_s}, z_s \rangle \\
+	&= \mathbf{w}_{y_s} -\sum_{\hat{\mathbf{y}} \in \mathcal{Y}^m} p(\hat{\mathbf{y}}|X) \mathbf{w}_{\hat{y}_s} \\
+	&= \mathbf{w}_{y_s} - \sum_{\hat{y} \in \mathcal{Y}} p(y_s = \hat{y} |X ) \mathbf{w}_{\hat{y}}.
+\end{align}
+
+
+\section{PyTorch}
+\label{sec:PyTorch}
+You will use the popular PyTorch deep learning framework to implement all the
+algorithms in this assignment. For a comprehensive introduction to PyTorch
+please refer to this link
+\href{https://pytorch.org/tutorials/beginner/pytorch_with_examples.html}{PyTorch
+  Tutorial}.
+
+The above tutorial is a beginner-friendly introduction to the basic concepts of
+PyTorch. You will need to be comfortable with all the concepts in that link to
+successfully complete this assignment. In particular, pay attention to the
+\texttt{nn.module} class. This is a standard way computational units are
+programmed in PyTorch. You will implement the \texttt{CRF} layer and the
+\texttt{Conv} layer, in the code, as a subclass of the \texttt{nn.module} class.
+Refer to the starter code for more details.
+
+Like in the last assignment, Torch has a gradient checker. 
+You could use it like this:
+
+https://discuss.pytorch.org/t/how-to-check-the-gradients-of-custom-implemented-loss-function/8546
+
+\section{(20 points) Convolution}
+
+Different from the previous assignment, we are going to feed in convolutional
+features of the input image of a letter to the CRF model. Your task is to
+\textbf{implement the convolution layer in PyTorch}. Note that PyTorch
+implements its own convolution layer (\texttt{nn.conv2d}). You are required to
+provide your own implementation and \textbf{NOT} use PyTorch's implementation.
+However, you may use PyTorch's implementation of convolution as a reference to
+check the correctness of your implementation.
+
+\paragraph{Convolution operation.} \label{par:question1}
+\label{par:Convolution}
+
+Convolution is a commonly used image processing technique, applying various
+types of transformations on an image. Convolutional Neural Networks (CNNs)
+employ multiple layers of convolutions to capture fine-grained image features,
+which are further used downstream in learning several computer vision tasks such
+as object detection, segmentation etc.
+
+A convolution operation takes in an image matrix $X$ and a filter matrix $K$ and
+computes the following function as detailed in Eq 9.6 of [GBC]:
+%
+\begin{equation}
+  \label{eq:conv}
+  \hat{X}(i,j) = \sum_{k,l} X(i + k, j+l) K(k,l).
+\end{equation}
+In our case, the output channel from CNN is 1.
+Kernel is square: $5 \times 5$ or $3 \times 3$.
+
+%
+\begin{itemize}
+\item[(3a)] \textbf{(20 points)} Implement the \texttt{Conv} layer and the
+\texttt{get\_conv\_features(x)} function, in the starter code. Once
+convolution is implemented, the CRF's \texttt{forward} pass and \texttt{loss}
+functions use the convolution features as inputs (the code for this is set up
+already).
+
+Your implementation also needs to accommodate different strides,
+along with an option of zero padding or not.
+
+\textbf{Testing your implementation.} Your implementation of the {\tt Conv}
+layer will contain the implementation of the convolution operation.
+%(similar to \tt nn.functional.conv2d} of PyTorch). 
+It is crucial to get the implementation
+of the convolution operation correct first. Consider this simple example of an
+input matrix $X$ and filter matrix $K$, with unit stride and zero padding.
+Report the result of convolving the $X$ with $K$. You must write this as a test
+case for the grader to run.
+%
+\[
+X = \begin{bmatrix}
+1 & 1 & 1 & 0 & 0 \\
+0 & 1 & 1 & 1 & 0\\
+0 & 0 & 1 & 1 & 1\\
+0 & 0 & 1 & 1 & 0\\
+0 & 1 & 1 & 0 & 0
+\end{bmatrix} ; \quad
+K = \begin{bmatrix}
+1 & 0 & 1 \\
+0 & 1 & 0 \\
+1 & 0 & 1
+\end{bmatrix}
+\]
+
+Implement your test case inside a file {\tt conv\_test.py}. It should run
+as a standalone test (with all the dependencies, imports in place),
+and print the result on the screen.
+
+{\bf Note.} In PyTorch input to conv2d are \(4\)-D tensors - {(\tt batch\_size
+	$\times$ channel\_size $\times$ height $\times$ weight)} for both the input
+image $X$ and the filter $K$. In our dataset, we use a single channel input
+({\tt channel\_size = 1}).
+
+\fbox{\begin{minipage}{0.93\textwidth}
+You only need to implement the forward pass of the convolution layer. There is no need to implement the derivatives. You can use PyTorch's auto-differentiation feature to automatically get backpropagation.
+\end{minipage}
+}
+
+Having the \verb#backward#() function implemented is an indication to PyTorch that the backward pass is indeed implemented. If a layer in the model is specified to have the \verb#backward# function, then PyTorch will just use it.
+Otherwise, if some layers do not have the \verb#backward# function explicitly implemented,
+then PyTorch will use autograd to compute the gradients.
+
+\end{itemize}
+
+\section{(50 points) CRF}
+
+Now, you will (re)-implement the CRF model in PyTorch. Note that this version is
+designed to use convolutional features and NOT the raw pixels to the CRF model
+(recall in Assignment 2 we used raw images pixels as the input features
+$\xvec^{t}_{j}$ which is a 128 dimensional vector). Here, they will be replaced
+by convolutional features. However, the CRF implementation should remain almost
+the same; except for changes in the input and output shapes and the fact that it
+needs to be implemented as a layer (\texttt{nn.module}) in PyTorch.
+
+The CRF model is implemented as a \texttt{class} in the \texttt{crf.py} file in
+the provided starter code.
+%
+\begin{itemize}
+\item[(4a)] Implement the forward, backward pass and loss inside
+  \texttt{crf.py}. This would amount to 
+  \begin{enumerate}
+  	\item re-implementing the \emph{inference} procedure using dynamic programming (decoder) 
+  	\item dynamic programming algorithm for \emph{gradient computation} including with respect to CRF input, $T$, and $w_y$,
+  	\item loss - which is the negative log-likelihood of the CRF objective. 
+  \end{enumerate} 
+	\textbf{You can directly copy from the reference solutions for the last assignment or use your own implementation.}
+  Once again, place holders for
+  all these are provided in the starter code (in the \texttt{crf.py} file). This
+  question will be graded through the subsequent questions.
+
+\item[(4b)] \textbf{(20 points)} Implement and display performance measures on
+  the CRF model - we will use the same performance measures as the previous
+  assignment (1) \textbf{letter-wise prediction accuracy}, (2) \textbf{word-wise
+    prediction accuracy}. Using a batch size of \(64\) plot the letter-wise and
+  word-wise prediction accuracies on both training and test data over \(100\)
+  iterations (\(x\) axis). (Place holder provided in the startup code). Use a
+  \(5 \times 5\) filter matrix for this experiment, and set stride and zero/no
+  padding to optimize the test performance.
+  Initialize the filters randomly.
+  If it has not converged (function value changes little), you may increase the number of iterations.
+  
+  
+  
+
+\item [(4c)] {\bf (20 points)} It is common to use more than one convolution
+  layer in modern deep learning models. Convolution layers typically capture
+  local features in an image. Stacked convolutions (multiple layers of
+  convolutions put one after the other) help capture higher level features in an
+  image that has shown to aid classification significantly. Repeat experiments
+  in (4b) with the following convolution layers. Set stride and zero/no padding
+  to optimize the test performance.
+
+
+\begin{enumerate}
+	\item A Layer with \(5 \times 5\) filter matrix
+	\item A Layer with \(3 \times 3\) filter matrix
+\end{enumerate}
+
+
+\item [(4d)] {\bf (10 points)} Enable GPU in your implementation. Does it lead
+  to significant speedup? You can test on the network in 4c. Make sure your plot
+  uses wallclock time as the horizontal axis.
+\end{itemize}
+
+\section{(30 points) Comparison with Deep Learning}
+\label{sec:Analysis}
+
+Compare your new CRF model, with convolution features, with a convolution based
+Deep Neural Network (DNN) model of your choice, also known as Convolutional
+Neural Networks (CNN). You are free to design your own DNN model or pick one of
+the popular model architectures that have been published. Some popular choices
+would be,
+
+\vspace{-0.5em}
+\begin{enumerate}
+\item VGG \cite{ZisSimZis14}
+\item ResNet \cite{SunHeZhaRenetal15a}
+\item AlexNet \cite{HinKriSutHin12a}
+\item GoogLeNet \cite{SerSzeLiuJiaetal14}
+\end{enumerate}
+\vspace{-0.5em}
+
+The input to the CNN model will of course be the original train and test
+dataset. None of these methods are composed with a CRF.
+You will have to report the following in your report.
+%
+\begin{itemize}
+\item[(5a)] \textbf{(10 points)} If you designed your own DNN model, then report
+  the implementation details of it, along with the model architecture, loss
+  functions etc. If you picked an existing model (say VGG), explain each of the
+  layers inside the network and its purpose for the task at hand. That is, why
+  you picked it and what functions (layers) were useful in the solution to the
+  problem. In addition, look into the source code and sketch its structure
+  within 150 words.
+
+	You do not need to try out each of the four architectures to justify.
+	You are free to use which ever model you think fits the task. We only ask for a justification on why you chose the model/architecture, based on the individual virtues. 
+	
+\item[(5b)] \textbf{(5 points)} Plot the letter-wise and word-wise prediction
+  accuracies on both training and test data (\(y\) axis) over \(100\) iterations
+  (\(x\) axis) (You might have to implement these). Compare this with your CNN+CRF
+  results and report your analysis (which model fared better? and why?). You may
+  use the hyperparameter that yields the best performance for your CNN+CRF
+  model.
+  If it has not converged in 100 iterations, you may increase the number of iterations.
+  
+  Sometimes, your program might run out of memory. In this case, you will have to adjust the batch size.  This post might help:
+  
+  \url{https://stats.stackexchange.com/questions/284712/how-does-the-l-bfgs-work}
+  
+  
+  
+\item[(5c)] {\bf (5 points)} Change the optimizer from {\em LBFGS} to {\em
+    ADAM}. Repeat the experiments in (5b) and report the letter-wise and
+  word-wise accuracies, with \(x\)-axis as the \#iterations. Does {\em ADAM} find
+  a better solution eventually, and does it converge faster than {\em LBFGS}?
+
+
+\item[(5d)] \textbf{(10 points)} Why did you choose this model (again it could
+  be your own design or an off-the-shelf model)? More precisely you should
+  explain every design decision (use of batchnorm layer, dropout layer etc) and
+  how it helped in the task at hand, in your report.
+\end{itemize}
+
+
+\section{FAQ}
+
+\textbf{1.} In train.py, what does \verb#embed_dim# = 64 mean? (b) Is it the \verb#max_word_length#? (c) If yes, why isn't it 14, which we obtain from the DataLoader?
+
+A: Typically layers are specified via the input and output dimensions that it produces. Here \verb#input_dim# corresponds to the input dimension that the layer takes in and the \verb#embed_dim# is the size of the embedding (output) that the layer produces. These are merely placeholders, meant to help you consider the input and output shapes while programming the CRF layer (and subsequently the conv layer). If this is confusing for you, feel free to setup your own mechanism to correctly handle input output shapes.
+The question asks you to perform convolution with different filter shapes. So one way to handle output shapes correctly is to let your convolution layer automatically infer the output shape, given the input shape and filter size; some pointers:
+
+https://fomoro.com/projects/project/receptive-field-calculator
+
+\textbf{2.} The output shape of conv layer will vary depending on filter size, padding \& stride. Are we supposed to handle that (by zero padding) and make the input tensor to the CRF as a fixed shape, after we get convfeatures inside \verb#get_conv_features#()?
+
+A: Yes. 
+
+\textbf{3.} (a) What does \verb#conv_shapes# = [[1,64,128]] denote? (b) Is 64 the \verb#embed_dim# or anything different (since we could have declared it as [[1, \verb#embed_dim#,128]] when we have already defined \verb#embed_dim#)? (c) Why \verb#batch_size# doesn't exist in this shape definition whereas it must be present in conv layer input \& output shapes?
+
+A: (a) Once again, \verb#conv_shapes# was meant to be a model parameter that specified the input/embedding shapes. Feel free to ignore this parameter and define your own way of handling the shapes (b) it is the embedding dimension, but if you are having multiple convolution layers (stacked convolution layers), then the shapes of the subsequent layers will be different. (c) \verb#batch_size# is typically not specified since its not a property of the layer; no matter what shapes you specify, the definition of \verb#batch_size# will not impact them, the shape of any data (input/output) will be something like \verb#batch_size# $\times$ a $\times$ b $\times$ c.
+
+\textbf{4.} (a) What's the \verb#output_channel# from cnn, is it the same as \verb#input_channel#=1? Or we need to tune this parameter to find a suitable \verb#output_channel#?
+(b) Is kernel a square tensor n*n or a rectangle tensor n*m?
+
+A: (a) Yes the number of channels is 1. (b) Square: 5x5 and 3x3, were the 2 filter sizes asked. 
+
+\textbf{5.} Part 3(a). Could you please provide a detailed description on what we are supposed to get out of this "\verb#get_conv_features#(x)" function? 
+Is this "convfeatures"  the filtered images as the output of the convolutional layer? If yes, do we apply a pooling layer first?
+
+A: Yes, the \verb#get_conv_features#() is merely a "placeholder" for getting the convolution features for the CRF model. No, you don't have to apply pooling. 
+
+\textbf{6.} In data preprocessing, the words whose length is less than max word length, array of zeros is added and the target (one hot encoded vector) will also have all zeros. While calculating the loss, are we supposed to ignore these instances or we should treat them as special character letter (all black image)?
+
+A: Yes, the ideal solution would be to exclude the padded instances from the loss computation. 
+
+
+\textbf{7.} 
+Why the entire dataset is divided into minibatches with same dimension (add zeros for nonexistent letter in a word). Would we have some advantages by using this trick? This seems to introduce more work since we need to calculate the number of valid letter in a word first before we use minibatches.
+
+A: This trick makes data loading/exporting easier, such as in \verb#data_loader# and \verb#get_conv_feature#. However, it is a little bit troublesome for crf because we have to clamp the zero-padded words. This results in one line of code for computing the valid lengths of words before feeding the whole batch into convolution layers.
+
+
+\textbf{8.} 
+(a) Is it true that our model should process data batch after batch, therefore the input dimension to our model is 256*14*128 (\verb#batch_size# * \verb#max_word_length# * \verb#num_of_pixels#)?  
+(b) If so, then the output dimension of CNN layer (i.e. the input dimension of CRF layer) should be 256*14*64, where 64 is the length of features of one letter. In the backward function of CRF, should we calculate and return the gradient of loss with respected to the whole batch of input, which is of dimension 256*14*64?
+(c) In the above step, how should we handle the invalid letters? Do we just set their gradients to all-zeros?
+
+A: (a) Yes.
+(b) Almost correct. We are calculating the gradient of loss with respect to weights.  But the loss is calculated using the features and not the image itself.
+(c) You have to make sure that invalid letters do not add any value to your loss function. Moreover, while you are calculating the gradient, you have zero-out the gradients of invalid letters. You cannot just use the true labels to find valid letters because, in test time, the labels are not provided to the model. The solution was to use the input image and find valid images (any image with at least one non-zero pixel). You can use 'torch.any()' and 'torch.where()' for masking and filtering. 
+
+
+\textbf{9.} 
+Should we use Sequential to concatenate convolution layer and crf layer, or implement a CRF layer that entangles with a couple of convolution layers?
+
+A: pass a conv layer (it could be a stack of sequential conv layers) to CRF and use the \verb#get_conv_features#() method to get the features. This way, we are able to easily determine the valid letters from the input image as well. 
+
+
+
+\bibliography{references} \bibliographystyle{plain}
+%\section{Convolutional filters}
+\label{sec:appdxconvfilters}
+
+
+
+\end{document}

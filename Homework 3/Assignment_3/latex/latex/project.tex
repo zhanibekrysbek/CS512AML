@@ -1,0 +1,389 @@
+\documentclass[11pt]{report}
+\usepackage{./assignment}
+\usepackage{slashbox}
+%\usepackage{enumitem}
+%\usepackage{stmaryrd}
+%\usepackage{cprotect}
+\usepackage{graphicx}
+\usepackage{subfigure}
+\renewcommand{\bibname}{References}
+
+\input{./Definitions}
+
+\title{Project 3: Adversarial Training on Sequence Classification}
+
+\lecturenumber{3}       % assignment number
+\duedate{5 PM, April 13, 2020} % Change this
+
+% Fill in your name and email address
+\stuinfo{Your Name(s)}{NetID(s)@uic.edu}
+
+\graphicspath{{./}{./Figures/}}
+
+\begin{document}
+
+\maketitle
+
+{\bf Deadline: 5 PM, April 13, 2020}
+
+In this assignment, we will explore how to do adversarial training on sequence classification using Pytorch. You will learn the following in this assignment:
+
+\vspace{-0.9em}
+\begin{itemize}
+\item Training recurrent neural network models in Pytorch
+
+\item How to do adversarial training as regularization
+
+\item How to do adversarial training as proximal mapping
+
+\item How to save and load a pretrained model
+
+\item Define your own autograd (automatic differentiation) function
+\end{itemize}
+\vspace{-0.8em}
+
+You must submit the following TWO files on Blackboard:
+\vspace{-1em}
+\begin{enumerate}
+
+  \item  A PDF report with answers to the questions outlined below.
+    {\bf Your report should include the name and NetID of \emph{all} team members.}
+    The \LaTeX\ source code of this document is provided with the package, and
+    you may write up your report based on it.
+  \item A tarball or zip file which includes your source code. Your code should
+    be well commented.
+    Include a short readme.txt file that explains how to run your code.
+\end{enumerate}
+\vspace{-1em}
+
+Please submit {\bf TWO files separately}, and do NOT include the PDF report in
+the tarball/zip.
+
+
+\section{Introduction}
+\label{sec:Introduction}
+
+\paragraph{Dataset.}
+
+We will use a time-series dataset called Japanese Vowels (JV).
+It contains the successive utterance of Japanese Vowels by 9 male speakers, 
+and the task is to classify the speakers 
+(so the dataset has 9 classes in total). 
+The original dataset can be downloaded from \href{https://archive.ics.uci.edu/ml/datasets/Japanese+Vowels}{here},
+but you only need to use the JV\_data.mat that is provided with this assignment,
+and \texttt{load\_data.py} has handled data loading for you.
+The dataset has been split into training (270 sequences) and testing (351 sequences); you should just use this partition. 
+The number of time steps in each sequence (\ie, length of sequence) may vary from 7 to 29. 
+Each time step is encoded by a 12-dimensional vector, 
+whose entries lie in $[-1,1]$. 
+Each sequence has one associated label.
+
+
+
+
+\paragraph{Sequence padding.}
+\label{par:padding}
+In last assignment, you have already learned how to train a model using minibatches. 
+We will continue using minibatches in this assignment. 
+As described above, each sequence may have different length, 
+so we need to pad all sequences in each minibatch to the same length. It is obvious that all sequences within one batch should be padded to the length of the longest sequence in that batch. 
+However, if the sequences in a batch vary a lot in their length,
+then too many time steps will have to be padded for the shortest one. 
+To avoid this, we first sorted all these sequences by their length, 
+and then split them into minibatches in that order. 
+This allows sequences with similar length to be assigned to the same batch, hence reducing the need of padding. 
+All these have been done in \texttt{load\_data.py}, 
+and you do not need to write your own DataLoader. 
+Moreover, We do not recommend random shuffling of the dataset, 
+because all sequences are already sorted in ascending order of their length.
+
+
+\paragraph{LSTM-based sequence classification model.}
+\label{sec:LSTM}
+
+We will use LSTM as our recurrent network. 
+Before applying LSTM, 
+we need to embed the raw input into a more meaningful representation. 
+Towards this end, 
+we first normalized the per-step input (a 12-dimensional vector) by using the built-in function \texttt{nn.functional.normalize}; 
+see \texttt{Classifier.py}. 
+After that, we used a convolution layer as our embedding layer. 
+This is different from what you have done in Assignment 2, 
+where you applied a 2-dimensional convolution layer (\texttt{nn.Conv2d}) on images.
+Now we will apply a 1-dimensional convolution on sequences (\texttt{nn.Conv1d}). 
+Here the input channel size is 12 dimensional,
+and the default output channel size is 64 dimensional (you can change this parameter).
+So if the kernel size is 3 and the sequence length is 10,
+then the output of this layer is a sequence of length 8 (10-3+1),
+where each of the 8 steps is a 64-dimensional vector.
+Do not use padding.
+See more details on Conv1d \href{https://pytorch.org/docs/stable/nn.html}{here}.
+To gain some nonlinearity, we then applied a ReLU (\texttt{nn.ReLU}) layer after the convolution layer, 
+whose output is forwarded to the LSTM layer (\texttt{nn.LSTMCell}). 
+Finally, the output of the last time step in LSTM is fed into a fully connected linear layer with 9 outputs,
+facilitating the prediction of the final class.
+
+
+
+
+\section{(15 points) Training the Basic Model}
+\label{sec:basic}
+
+We start from training a basic sequence classifier as stated above. 
+In this part, you need to implement the model described in the previous section by completing the implementation of the \texttt{forward} function of the \texttt{LSTMClassifier} class 
+(see \texttt{Classifier.py}). 
+Since we use built-in layers in this assignment, 
+all the layers needed are already listed in \texttt{\_\_init\_\_} of \texttt{LSTMClassifier}. 
+So the \texttt{forward} function only needs to chain up
+\texttt{self.normalize}, \texttt{self.conv}, ..., \texttt{sefl.linear}.
+
+
+Pay attention to the order of tensor dimensions, especially before and after the convolution layer. 
+We are using 1 dimensional convolution and it is applied on the dimension of sequence length. 
+The input channel size is 12 (the dimension of each time step input vector). 
+You may need to consider swapping order of dimensions, 
+for which \texttt{torch.permute} can be helpful. 
+
+Among the input arguments of the \texttt{forward} function, 
+\texttt{r} will be used in adversarial training; 
+please set it to 0 in this section. 
+\texttt{mode} is a flag indicating the training mode, 
+and it can be set to three different options: `plain', `AdvLSTM', and `ProxLSTM'. 
+Set the \texttt{mode} to `plain' in this section, 
+and you will need to handle the other two options in the following sections. 
+In \texttt{training.py}, the loss function and the optimizer are already assigned (\texttt{F.cross\_entropy} and \texttt{torch.optim.Adam}, respectively). 
+The `Training basic model' part in \texttt{training.py} is devoted to  this section.
+Run it, and feel free to tune all hyperparameters for better performance. 
+Plot a figure where the x-axis is the training epoch, 
+and the y-axis is the test accuracy.
+In your report, write in detail what hyperparameters values you chose,
+\eg, \texttt{batch\_size}, \texttt{hidden\_size}, \texttt{basic\_epoch}, \texttt{out\_channels}, \texttt{kernel\_size},  \texttt{stride}, \texttt{lr} (learning rate), \texttt{weight\_decay}.
+
+You only need to pay a reasonable amount of effort in tuning the hyperparameters, 
+so that the performance is reasonably good.
+There is no need to find the optimal hyperparameter values.
+
+
+\section{(10 points)  Save and Load Pretrained Model}
+\label{sec:saveload}
+
+In deep learning, it is very common to save a trained model's parameters for future use. 
+When we want to train another model which shares the same trainable parameters with the saved one, 
+we can directly load the saved model's parameters to initialize the new model. 
+This will significantly reduce the training time. 
+In the previous section, 
+you have trained a basic sequence classification model.
+Save its parameter to a file, 
+and then load it to \texttt{`Adv\_model'} and \texttt{`Prox\_model'}. You will need to train these two models in the following two sections. Here is how to save and load models in Pytorch: \href{https://pytorch.org/tutorials/beginner/saving_loading_models.html}{Save and Load}.
+
+Implement the steps 1, 2, 3 in the section of `Save and Load model' in \texttt{training.py}.
+Grading will be based on your code only.
+    
+\section{ (25 points) Adversarial Training as Regularization} 
+In this section, you will implement the first adversarial training method. 
+Following the adversarial training method in \cite{miyato2016adversarial}, here
+we explain how this method works.
+The main idea is to train the model with perturbed inputs in addition to the original inputs. 
+The model structure will be the same as the basic classification model that you have already implemented in Section \ref{sec:basic}.
+By adding perturbations to the inputs, 
+you will obtain a new loss, which we call adversarial loss. 
+Adding it to the original loss, 
+the gradient of the stochastic gradient optimizer can be augmented to account for the adversarial loss.
+In particular, each epoch of the algorithm consists of the following steps:
+
+1. \quad Sample a minibatch $\{v_i, y_i\}$, where $v_i$ is a sequence and $y_i$ is its label.
+
+2. \quad For each $(v_i, y_i)$ in the minibatch
+
+3. \quad \quad Compute the gradient of the loss 
+$g_i = \nabla_{v}|_{v = v_i}  loss(v, y_i)$ under the current model parameter.
+
+4. \quad \quad Construct the adversarial example with $v_i + \epsilon r_i$, where $r_i = \frac{g_i}{\nbr{g_i}_2}$.
+
+5. \quad Compute the gradient of the model based on the augmented minibatch $\{v_i, y_i\} \cup \{v_i + \epsilon r_i, y_i\}$.
+
+6. \quad Use the gradient to update the model parameter by, \eg, ADAM.
+
+% \newpage
+% we can write out the objective function to minimize for a given training set $\Dcal_{tr}$:
+% %
+% \begin{equation}
+% L_{total} = \frac{1}{\abr{\Dcal_{tr}}} \sum_{(v, y) \in \Dcal_{tr}} 
+% \cbr{loss(v,y) + L_{adv}(v)}, 
+% \where  L_{adv}(v) = loss(v+r, y).
+% \end{equation}
+% %
+% Here $L$ is the loss for basic classification model (which has been done in Section \ref{sec:basic}). 
+% $L_{adv}$ is the adversarial loss. 
+
+Here $v_i$ represents the representation we want to perturb. 
+In practice, it is often not sound to directly perturb the raw input because it may be discrete or lie in a restricted domain (\eg, words).
+So in this assignment, 
+we will consider $v_i$ as \textbf{the input of the LSTM layer}, \ie, the output of the convolution layer.
+Steps 3 and 4 above are motivated as follows.
+The goal of adversarial training is to make the model robust to changes on inputs. 
+This can be achieved by penalizing the change of the loss with respect to the change of input,
+in the direction that tries to increase the loss.
+As such, the steepest direction---which is the normalized derivative---is used here.
+% \begin{equation}
+% \label{eq:perturbation}
+%     r = -\epsilon g/\|g\|_2 \text{  where  }g = \nabla_{v}  loss(v,y)
+% \end{equation}
+
+As illustrated in Figure \ref{fig:advLSTM}, $v$ is the input to the LSTM layer, not the raw input. 
+$g$ here is the derivative of loss with respect to the LSTM layer input. $\epsilon$ is a tunable hyperparameter, which controls the scale of perturbation. 
+You are to complete the following steps to implement the method:
+
+\begin{itemize}
+    \item[a] \textbf{(10 points)} Complete the \texttt{compute\_perturbation} function in \texttt{training.py}. The inputs of this function are \texttt{loss} and \texttt{model}. Follow steps 3 and 4 to compute the perturbation $r_i$. 
+    Here we can utilize the autograd mechanism in Pytorch, 
+    more details of which can be found here: \href{https://pytorch.org/docs/stable/autograd.html}{autograd}. 
+    Note that after $r_i$ is computed,
+    it is considered as a constant.
+    That means each original training sequence is now made into two training sequences, one with $r_i = 0$ and one with $r_i$ computed as above.
+    In both cases, we need to perform backpropagation through all layers including the convolution layer,
+    and although $r_i$ was computed based on the current model parameters,
+    it is considered as a fixed constant in backpropagation.
+
+    Invoke \texttt{compute\_perturbation} function in the \texttt{train\_model} function of \texttt{training.py} (see the part of `Add adversarial training term to loss').
+    The grading will be based on the code,
+    and in my implementation,
+    it took no more than five lines.
+    %
+    \item[b] \textbf{(5 points)} 
+    Write a branch about \texttt{mode} = `AdvLSTM' in \texttt{forward} pass of \texttt{LSTMClassifier} in \texttt{Classifier.py}. 
+    Add perturbation $r$ to the input of LSTM layer.
+    Similar to the mode of `plain', you need to chain up several layers.
+    But here make sure that the resulting model allows extracting the gradient with respect to the input of LSTM.
+    %
+    \item[c] \textbf{(10 points)} You should have already loaded the previously trained basic model to `Adv\_model' in \texttt{training.py} (Section \ref{sec:saveload}). 
+    Now run the `Training Adv\_model' part in \texttt{training.py} to see how this method works. 
+    
+    Tune $\epsilon$ to the best performance, 
+    then plot a figure whose x-axis is the training epoch, 
+    and the y-axis is the test accuracy. 
+    Keep all the hyperparameters, 
+    and draw in the same figure three more curves that correspond to  $\epsilon = {0.01, 0.1, 1.0}$.
+    The first curve (for the best $\epsilon$) can take as many epochs as you like, 
+    but limit the training epoch to 50 for the other three curves.
+
+    How does the performance change with respect to $\epsilon$?
+    As for the other hyperparameters,
+    you only need to pay a reasonable amount of effort in tuning them, 
+    so that the performance is reasonably good.
+    There is no need to find their optimal values.
+\end{itemize}
+
+\begin{figure}[t]
+% 	\vspace{-0.2em}
+	\centering
+	\includegraphics[width=0.55\linewidth]{AdvLSTM.png}
+% 	\vspace{-0.8em}
+	\caption{Adversarial LSTM with perturbed input}
+	\label{fig:advLSTM}
+	%\vspace{-1.4em}
+\end{figure}
+
+\section{(40 points) Adversarial Training as Proximal Mapping}
+
+\begin{figure}[t]
+% 	\vspace{-0.2em}
+	\centering
+	\includegraphics[width=0.5\linewidth]{ProxLSTM.png}
+% 	\vspace{-2.0em}
+	\caption{A proximal LSTM layer}
+	\label{fig:proxLSTM}
+	%\vspace{-1.4em}
+\end{figure}
+
+In this section, we will introduce a new adversarial training method that is based on proximal mapping. 
+Let us recall the details of an LSTM cell.
+At each time step, the evolution of the hidden state $c_t$ can be compactly represented by
+$c_t = f(c_{t-1}, h_{t-1}, v_t)$,
+while the output $h_t$ is updated by $h_t = g(c_{t-1}, h_{t-1}, v_t)$. 
+We aim to encourage that the hidden state $c_t$ stays invariant, 
+when each $v_t$ is perturbed by $r_t$ whose norm is bounded by some constant $\delta$.
+To this end, we introduce an intermediate step 
+$s_t = s_t(c_{t-1}, h_{t-1}, v_t)$ that computes the original hidden state,
+and then the new hidden state $c_t$ is formed by moving $s_t$ towards the \emph{null} \emph{space} of the variation of $s_t$ under the perturbations on $v_t$,
+while remaining close to $s_t$ by penalizing the Euclidean norm of $c_t - s_t$.
+This leads to the following optimization (a.k.a. \textbf{proximal mapping}) that computes the new state $c_t$:
+
+\vspace{-1.6em}
+\begin{align}
+\nonumber
+c_t &:= \argmin_c {\smallfrac{\lambda}{2} \nbr{c - s_t}^2 
+	+ \smallfrac{1}{2}\max_{r_t: \nbr{r_t} \le \delta} \inner{c}{\underbrace{s_t(c_{t-1}, h_{t-1}, v_t) - s_t(c_{t-1}, h_{t-1}, v_t + r_t)}_{\text{variation of } s_t \text{ under the perturbations on } v_t}}^2} \\
+&\approx \argmin_c {\frac{\lambda}{2} \nbr{c - s_t}^2 
+	+ \frac{1}{2} \max_{r_t: \nbr{r_t} \le \delta} \inner{c}{\frac{\partial}{\partial v_t} s_t(c_{t-1}, h_{t-1}, v_t) r_t}^2} \\
+	\label{eq:proxmap}
+&= \argmin_c {\smallfrac{\lambda}{2} \nbr{c - s_t}^2 
++ \smallfrac{\delta^2}{2}\nbr{c^\top G_t}^2}, 
+\where G_t := \smallfrac{\partial}{\partial v_t} s_t(c_{t-1}, h_{t-1}, v_t),
+\end{align}
+The diagram is shown in Figure \ref{fig:proxLSTM}. 
+By taking derivative of the objective in \eqref{eq:proxmap} with respect to $c$,
+we obtain a closed-form solution for $c_t$: 
+\begin{equation}
+\label{eq:ct_expr}
+    c_t = (I + \lambda^{-1} \delta^2 G_t G_t^\top)^{-1} s_t.
+\end{equation} 
+
+\begin{itemize}
+    \item[a] \textbf{(30 points)} 
+    Implement the ProxLSTMCell in \texttt{ProxLSTM.py} as shown in the blue area of Figure \ref{fig:proxLSTM}. 
+    You need to implement both the \texttt{forward} and \texttt{backward} pass. Your implementation should use the built-in LSTMCell as a blackbox, 
+    especially in computing the directional second-order derivative in \eqref{eq:ell_G_y} and \eqref{eq:ell_G_c}. 
+    You can follow above formulations to implement the \texttt{forward} pass. 
+    The \texttt{backward} pass contains second-order derivative, 
+    and you may follow the computation details in Appendix \ref{app:gradient}.
+    %
+    \item[b] \textbf{(10 points)} Write a branch in \texttt{LSTMClassifier} so that it can handle \texttt{mode} = `ProxLSTM', you actually only need to change the original LSTMCell (for the `plain' mode) into the ProxLSTMCell you have implemented. 
+    You should have already loaded the previously trained basic model to `Prox\_model' (Section \ref{sec:saveload}).
+    
+    Run the `Training Prox\_model' segment in \texttt{training.py} to see how it works. 
+    According to \eqref{eq:ct_expr},
+    $\lambda$ and $\delta$ make a difference only through the value of $\lambda^{-1} \delta^2$.
+    So let us denote $\epsilon = \lambda^{-1} \delta^2$. 
+    Tune $\epsilon$ to the best performance, 
+    and then draw a figure whose x-axis is the training epoch, 
+    and the y-axis is the test accuracy. 
+    In the same figure, draw another three curves with $\epsilon = {0.1, 1.0, 5.0}$.
+    The first curve (for the best $\epsilon$) can take as many epochs as you like, 
+    but limit the training epoch to 100 for the other three curves.
+    
+    How does the performance change with respect to $\epsilon$?
+    As for the other hyperparameters,
+    you only need to pay a reasonable amount of effort in tuning them, 
+    so that the performance is reasonably good.
+    There is no need to find their optimal values.
+\end{itemize}
+
+
+\section {(10 points) Dropout and Batch Normalization}
+\begin{itemize}
+    \item[a] \textbf{(5 points)} 
+    Try to add a dropout layer to the model, 
+    and then train `Prox\_model' again. 
+    Where did you add this layer (before convolution layer, after ProxLSTM layer, etc.) and how does it change the performance (improved, not helping, etc.)?
+    %
+    \item[b] \textbf{(5 points)} 
+    Try to add batch normalization layer to the model, 
+    and then train `Prox\_model' again. 
+    Where did you add this layer (before convolution layer, after ProxLSTM layer, etc.) and how does it change the performance (improved, not helping, etc.)?
+\end{itemize}
+
+\appendix
+\begin{center}
+	\Huge \textbf{Appendix}
+\end{center}
+\label{sec:appdx}
+\input{appendix}
+
+\bibliography{references} \bibliographystyle{plain}
+%\section{Convolutional filters}
+
+
+
+
+\end{document}

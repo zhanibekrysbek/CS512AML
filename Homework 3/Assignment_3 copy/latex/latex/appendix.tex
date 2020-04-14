@@ -1,0 +1,126 @@
+\section{Backpropagation for ProxLSTM}
+
+\label{app:gradient}
+To concentrate on backpropagation,
+we denote loss as $L$ and it only depends on the output of the last time step $T$, \ie, $h_T$.
+From the final layer, we get $\frac{\partial L}{\partial h_T}$.
+Then we can get $\frac{\partial L}{\partial h_{T-1}}$ and 
+$\frac{\partial L}{\partial c_{T-1}}$ as in the standard LSTM ($G_T$ in the final layer can be ignored and 
+$\frac{\partial L}{\partial c_T} = 0$). 
+In order to compute the derivatives with respect to the weights $W$ in the LSTMs, we need to recursively compute 
+$\frac{\partial L}{\partial h_{t-1}}$ and 
+$\frac{\partial L}{\partial c_{t-1}}$,
+given $\frac{\partial L}{\partial h_{t}}$ and 
+$\frac{\partial L}{\partial c_{t}}$.
+Once they are available, then
+\begin{align}
+\frac{\partial L}{\partial W} 
+= \sum_{t=1}^T \cbr{\underbrace{\frac{\partial L}{\partial h_t}}_{\text{by } \eqref{eq:rec_ell_y}} 
+	\underbrace{\frac{\partial}{\partial W} h_t(c_{t-1}, h_{t-1}, x_t)}_{\text{standard LSTM}}
+	+ \underbrace{\frac{\partial L}{\partial c_t}}_{\text{by } \eqref{eq:rec_ell_c}} \underbrace{\frac{\partial}{\partial W} c_t(c_{t-1}, h_{t-1}, x_t)}_{\text{standard LSTM}}},
+\end{align}
+where the two $\frac{\partial}{\partial W}$ on the right-hand side are identical to the standard operations in LSTMs.
+Here we use the Jacobian matrix arrangement for partial derivatives,
+\ie,
+if $f$ maps from $\RR^n$ to $\RR^m$,
+then $\frac{\partial f(x)}{\partial x} \in \RR^{m \times n}$. 
+
+Given $\frac{\partial L}{\partial c_{t}}$, we can first compute 
+$\frac{\partial L}{\partial s_t}$ and $\frac{\partial L}{\partial G_t}$ based on the proximal map,
+and the details will be provided in Section \ref{sec:grad_prox}.
+Given their values,
+we now compute
+$\frac{\partial L}{\partial h_{t-1}}$ and 
+$\frac{\partial L}{\partial c_{t-1}}$.
+Firstly,
+%
+\begin{align}
+\label{eq:rec_ell_y}
+\frac{\partial L}{\partial h_{t-1}} = 
+\underbrace{\frac{\partial L}{\partial h_t}}_{\text{by recursion}}
+\underbrace{\frac{\partial h_t}{\partial h_{t-1}}}_{\text{std LSTM}}
++ \underbrace{\frac{\partial L}{\partial G_t} \frac{\partial G_t}{\partial h_{t-1}}}_{\text{by }\eqref{eq:ell_G_y}}
++ \underbrace{\frac{\partial L}{\partial s_t}}_{\text{by } \eqref{eq:ell_s}}
+\underbrace{\frac{\partial s_t}{\partial h_{t-1}}}_{\text{std LSTM}}.
+\end{align}
+The terms $\frac{\partial h_t}{\partial h_{t-1}}$ and $\frac{\partial s_t}{\partial h_{t-1}}$ are identical to the operations in the standard LSTM.
+The only remaining term is in fact a directional second-order derivative,
+where the direction $\frac{\partial L}{\partial G_t}$ can be computed from from \eqref{eq:ell_G}:
+\begin{align}
+\label{eq:ell_G_y}
+\frac{\partial L}{\partial G_t} \frac{\partial G_t}{\partial h_{t-1}} =
+\frac{\partial L}{\partial G_t} \frac{\partial^2 }{\partial x_t \partial h_{t-1}} s_t(c_{t-1}, h_{t-1}, x_t)
+= \frac{\partial}{\partial h_{t-1}} \inner{\underbrace{\frac{\partial L}{\partial G_t}}_{\text{by } \eqref{eq:ell_G}}}{\frac{\partial}{\partial x_t} s_t(c_{t-1}, h_{t-1}, x_t)}.
+\end{align}
+Such computations are well supported in most deep learning packages, such as PyTorch.
+Secondly, 
+\begin{align}
+\label{eq:rec_ell_c}
+\frac{\partial L}{\partial c_{t-1}} = 
+\underbrace{\frac{\partial L}{\partial h_t}}_{\text{by recursion}}
+\underbrace{\frac{\partial h_t}{\partial c_{t-1}}}_{\text{std LSTM}}
++ \underbrace{\frac{\partial J}{\partial G_t} \frac{\partial G_t}{\partial c_{t-1}}}_{\text{by }\eqref{eq:ell_G_c}}
++ \underbrace{\frac{\partial L}{\partial s_t}}_{\text{by } \eqref{eq:ell_s}}
+\underbrace{\frac{\partial s_t}{\partial c_{t-1}}}_{\text{std LSTM}}.
+\end{align}
+The terms $\frac{\partial h_t}{\partial c_{t-1}}$ and $\frac{\partial s_t}{\partial c_{t-1}}$ are identical to the operations in the standard LSTM.
+The only remaining term is in fact a directional second-order derivative:
+\begin{align}
+\label{eq:ell_G_c}
+\frac{\partial L}{\partial G_t} \frac{\partial G_t}{\partial c_{t-1}} =
+\frac{\partial L}{\partial G_t} \frac{\partial^2 }{\partial x_t \partial c_{t-1}} s_t(c_{t-1}, h_{t-1}, x_t)
+= \frac{\partial}{\partial c_{t-1}} \inner{\underbrace{\frac{\partial L}{\partial G_t}}_{\text{by } \eqref{eq:ell_G}}}{\frac{\partial}{\partial x_t} s_t(c_{t-1}, h_{t-1}, x_t)}.
+\end{align}
+
+
+\subsection{Gradient Derivation for the Proximal Map}
+\label{sec:grad_prox}
+
+We now compute the derivatives involved in the proximal operator,
+namely $\frac{\partial L}{\partial s_t}$ and $\frac{\partial L}{\partial G_t}$.
+For clarify, let us omit the step index $t$, 
+set $\epsilon = \lambda^{-1} \delta^2 = 1$ without loss of generality, 
+and denote
+\begin{align}
+L = f(c), \where c := c(G,s) := (I + G G^\top)^{-1} s.
+\end{align}
+We first compute $\partial L / \partial s$ which is easier.
+\begin{align}
+\Delta L &:= f(c(G, s+\Delta s)) - f(c(G,s)) 
+= \grad f(c)^\top (c(G,s+\Delta s) - c(G,s)) + o(\nbr{\Delta s})\\
+&= \grad f(c)^\top (I+GG^\top)^{-1} \Delta s + o(\nbr{\Delta s}).
+\end{align}
+Here $o(\nbr{\Delta s})$ is a term that diminishes (tends to 0) faster than $\nbr{\Delta s}$.
+Therefore, 
+\begin{align}
+\label{eq:ell_s}
+\frac{\partial L}{\partial s} = \grad f(c)^\top (I+GG^\top)^{-1}.
+\end{align}
+We now move on to $\partial L / \partial G$.
+Notice
+%
+\begin{align}
+\Delta L := f(c(G+\Delta G,s)) - f(c(G,s)) 
+= \grad f(c)^\top (c(G+\Delta G,s) - c(G,s)) + o(\nbr{\Delta G}).
+\end{align}
+Since
+\begin{align}
+&c(G+\Delta G,s) = (I+(G+\Delta G)(G + \Delta G)^\top)^{-1} s \\
+= &\sbr{(I+GG^\top)^{\half} \rbr{I + (I+GG^\top)^{-\half} (\Delta G G^\top + G \Delta G^\top) (I+GG^\top)^{-\half}}(I+GG^\top)^{\half}}^{-1} s \\
+= &(I+GG^\top)^{-\half} \rbr{I - (I+GG^\top)^{-\half} (\Delta G G^\top + G \Delta G^\top) (I+GG^\top)^{-\half} + o(\nbr{\Delta G})}(I+GG^\top)^{-\half} s \\
+= & c(G,s) - (I+GG^\top)^{-1} (\Delta G G^\top + G \Delta G^\top) (I+GG^\top)^{-1} s + o(\nbr{\Delta G}),
+\end{align}
+we can finally obtain
+\begin{align}
+\Delta L
+&= -\grad f(c)^\top (I+GG^\top)^{-1} (\Delta G G^\top + G \Delta G^\top) (I+GG^\top)^{-1} s + o(\nbr{\Delta G}) \\
+&= -\tr \rbr{\Delta G^\top (I+GG^\top)^{-1} \rbr{\grad f(c) s^\top + s \grad f(c)^\top} (I+GG^\top)^{-1} G} + o(\nbr{\Delta G}).
+\end{align}
+So in conclusion,
+\begin{align}
+\frac{\partial L}{\partial G} &= - (I+GG^\top)^{-1} \rbr{\grad f(c) s^\top + s \grad f(c)^\top} (I+GG^\top)^{-1} G \\
+\label{eq:ell_G}	
+&= -(a c^\top + c a^\top)G,
+\where a = (I+GG^\top)^{-1}\grad f(c).
+\end{align}
+
