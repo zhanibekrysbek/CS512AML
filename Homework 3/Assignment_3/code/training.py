@@ -7,7 +7,10 @@ import torch.optim as optim
 from Classifier import LSTMClassifier
 import matplotlib.pyplot as plt
 import numpy as np
+import warnings
 
+
+warnings.filterwarnings("ignore")
 
 torch.manual_seed(1)
 # Hyperparameters, feel free to tune
@@ -139,12 +142,14 @@ def plot(history, eps = None, train_test=1, figType = 'acc', saveFile = None, ti
 
 
 
+
 train_iter, test_iter = load_data.load_data('JV_data.mat', batch_size)
 loss_fn = F.cross_entropy
 
+print(" ==================================")
+print("|     Basic model training         |")
+print(" ==================================")
 ''' Training basic model '''
-
-"""
 model = LSTMClassifier(batch_size, output_size, hidden_size, input_size)
 history = [[],[]]
 
@@ -152,28 +157,26 @@ for epoch in range(basic_epoch):
         optim = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=1e-3, weight_decay=1e-3)
         train_loss, train_acc = train_model(model, train_iter, mode = 'plain')
         val_loss, val_acc = eval_model(model, test_iter, mode ='plain')
-        if epoch%10 == 0:
+        if epoch%50 == 0:
             print(f'Epoch: {epoch+1:02}, Train Loss: {train_loss:.3f}, Train Acc: {train_acc:.2f}%, Test Loss: {val_loss:3f}, Test Acc: {val_acc:.2f}%')
         history[0].append(train_acc)
         history[1].append(val_acc)
     
 
-
 ''' Save and Load model'''
-
 # 1. Save the trained model from the basic LSTM
 plot(history, train_test = 1,saveFile = './plots/LSTM_plain_acc_test.png')
 plot(history, train_test = 0, saveFile = './plots/LSTM_plain_acc_train.png')
-torch.save(model, './models/LSTM_Plain_model_v2')
+torch.save(model, './models/LSTM_Plain_model_cell')
 
-"""
 
-# 2. load the saved model to Prox_model, which is an instance of LSTMClassifier
-Prox_model = torch.load('./models/LSTM_Plain_model')
+print(" ==================================")
+print("|     Adv_model training           |")
+print(" ==================================")
 
-# 3. load the saved model to Adv_model, which is an instance of LSTMClassifier
-Adv_model = torch.load('./models/LSTM_Plain_model')
 
+# 2. load the saved model to Adv_model, which is an instance of LSTMClassifier
+Adv_model = torch.load('./models/LSTM_Plain_model_cell')
 
 
 ''' Training Adv_model'''
@@ -184,7 +187,7 @@ history = []
 for ind, eps in enumerate(epsilons):
     hist = [[],[]]
     print(f" ==============  Training eps: {eps} ")
-    Adv_model = torch.load('./models/LSTM_Plain_model')
+    Adv_model = torch.load('./models/LSTM_Plain_model_cell')
     for epoch in range(Adv_epochs[ind]):
         optim = torch.optim.Adam(filter(lambda p: p.requires_grad, Adv_model.parameters()), lr=5e-4, weight_decay=1e-4)
         train_loss, train_acc = train_model(Adv_model, train_iter, mode = 'AdvLSTM', epsilon=eps)
@@ -198,9 +201,23 @@ for ind, eps in enumerate(epsilons):
 plot(history,eps=epsilons,title="Adversarial LSTM training", figType='lrCurve',saveFile = './plots/AdvLSTM_acc_lrCurve_test.png')
 plot(history,train_test=0,eps=epsilons,title="Adversarial LSTM training", figType='lrCurve',saveFile = './plots/AdvLSTM_acc_lrCurve_train.png')
 
+torch.save(Adv_model, './models/Adv_model_cell')
 
 
 
+print(" ==================================")
+print("|     Prox_model training          |")
+print(" ==================================")
+
+# 4. load the saved model to Prox_model, which is an instance of LSTMClassifier
+Prox_model = torch.load('./models/Adv_model_cell')
+
+"""" Check the performance of Prox_model with pretrained model"""
+eps = [0.1, 1.,5.]
+for ep in eps:
+    Prox_model.prox_eps = ep
+    val_loss, val_acc = eval_model(Prox_model, test_iter, mode ='ProxLSTM')
+    print(f"prox_eps: {Prox_model.prox_eps}, val_loss: {val_loss}, val_acc: {val_acc}")
 
 """
 ''' Training Prox_model'''
