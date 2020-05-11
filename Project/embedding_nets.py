@@ -329,9 +329,10 @@ class RNET(nn.Module):
     accuracy = 0
     trainLoss= 0
     testLoss = 0
-    def __init__(self, device = 'cpu', dataSize = [3,100,100],
-                  dims = {'conv1':{'nodes':10,'kSize':3, 'stride':1 }, 'conv2':{'nodes':10,'kSize':3, 'stride':1}, 
-                          'pool1':{'stride':(1,1), 'kSize':(2,1)}, 'pool2':{'stride':(1,1), 'kSize':(2,1)},
+    def __init__(self, device = 'gpu', dataSize = [3,100,100],
+                  dims = {'conv1':{'nodes':50,'kSize':3, 'stride':1 }, 'conv2':{'nodes':50,'kSize':3, 'stride':1}, 
+                          'conv3':{'nodes':40,'kSize':3, 'stride':1 }, 'conv4':{'nodes':40,'kSize':3, 'stride':1}, 
+                          'pool1':{'stride':(1,1), 'kSize':(2,2)}, 'pool2':{'stride':(1,1), 'kSize':(2,2)},
                           'linear1':{'out':50}, 'linear2':{'out':120}},
                  **kwargs):
         """ DESCRIPTIONS: Used to initialzie the model. This is the workhorse. pass all required arguments in the init
@@ -343,7 +344,7 @@ class RNET(nn.Module):
         super(ANET, self).__init__()
         
         # Boiler plate code. Any init should declare the following
-        self.descr = 'A_NET'
+        self.descr = 'R_NET'
         self.lr_policy = 'plateau'
         self.metric = 0
         self.classMethod = 'label'
@@ -400,6 +401,10 @@ class RNET(nn.Module):
         x = self.conv1(x)
         x = F.relu(self.mPool1(x))
         x = self.conv2(x)
+        x = F.relu(self.mPool2(x))
+        x = self.conv3(x)
+        x = F.relu(self.mPool1(x))
+        x = self.conv4(x)
         x = F.relu(self.mPool2(x))
         x = F.dropout(x, training=self.training)
         #print(x.shape)
