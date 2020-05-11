@@ -66,7 +66,7 @@ def parse_args():
     parser.add_argument('--lr',    type = float,metavar = 'lr',   default='0.001',help="Learning rate for the oprimizer.")
     parser.add_argument('--m',     type = float,metavar = 'float',default= 0,     help="Momentum for the optimizer, if any.")
     parser.add_argument('--bSize', type = int,  metavar = 'bSize',default=32,     help="Batch size of data loader, in terms of samples. a size of 32 means 32 images for an optimization step.")
-    parser.add_argument('--epochs',type = int,  metavar = 'e',    default=12   ,  help="Number of training epochs. One epoch is to perform an optimization step over every sample, once.")
+    parser.add_argument('--epochs',type = int,  metavar = 'e',    default=5   ,  help="Number of training epochs. One epoch is to perform an optimization step over every sample, once.")
     parser.add_argument('--debug', type = bool,  metavar = 'debug',default=False,  help="Sets debug mode. Training, testing will orceed for only 1 batch and stop.")
     # Parse the input from the console. To access a specific arg-> dim = args.dim
     args = parser.parse_args()
@@ -100,12 +100,12 @@ def main():
     # Classify Fruits!
     # ********************
     
-    trainClassifier = False
+    trainClassifier = True
     if trainClassifier:
         print("Top level device is :{}".format(device))
         # Declare your model and other parameters here
         embeddingNetKwargs = dict(device=device)
-        embeddingNet = eNets.ANET(**embeddingNetKwargs).to(device)
+        embeddingNet = eNets.RNET(**embeddingNetKwargs).to(device)
         loss = nn.CrossEntropyLoss() # or use embeddingNet.propLoss (which should bedeclared at your model; its the loss function you want it by default to use)
         fitArgs['lossFunnction'] = loss
         # ---|
