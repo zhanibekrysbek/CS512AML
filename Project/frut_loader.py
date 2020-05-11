@@ -9,6 +9,7 @@ import random
 import sys
 from PIL import Image
 import numpy as np
+print(sys.path.pop(4))
 import cv2
 
 import glob
